@@ -11,3 +11,11 @@ __pycache__/
 # OS
 .DS_Store
 EOF
+
+
+# Ignore camera output
+media/
+*.mp4
+*.avi
+*.jpg
+*.png
