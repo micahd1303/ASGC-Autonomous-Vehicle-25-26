@@ -1,1 +1,13 @@
-*.txt
+cat > .gitignore <<'EOF'
+# Virtual environment
+venv/
+__pycache__/
+*.pyc
+# Editor files
+.vscode/
+.idea/
+# Logs
+*.log
+# OS
+.DS_Store
+EOF
