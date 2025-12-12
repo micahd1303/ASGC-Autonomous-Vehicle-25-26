@@ -17,6 +17,10 @@ __pycache__/
 *.pyc
 *.pyo
 
+#DFRobot
+DFRobot_MatrixLidar/
+
+
 # Ignore camera output
 media/
 *.mp4
