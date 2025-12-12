@@ -12,6 +12,10 @@ __pycache__/
 .DS_Store
 EOF
 
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
 
 # Ignore camera output
 media/
