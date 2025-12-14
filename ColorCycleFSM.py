@@ -85,6 +85,13 @@ out = cv2.VideoWriter(video_path, fourcc, 30.0, (FRAME_WIDTH, FRAME_HEIGHT))
 print("Starting FSM object detection...\n")
 
 # -----------------------------------
+# FPS MEASUREMENT VARIABLES
+# -----------------------------------
+fps_per_color = {}
+total_frames = 0
+total_time = 0
+
+# -----------------------------------
 # FSM LOOP
 # -----------------------------------
 for obj_type, color_name in FSM_SEQUENCE:
@@ -92,6 +99,8 @@ for obj_type, color_name in FSM_SEQUENCE:
     print(f"--- FSM STATE: Detecting {color_name} {obj_type} ---")
     frames = 0
     hsv_ranges = COLOR_RANGES[color_name]
+
+    start_time = time.time()  # start timer for this color
 
     while frames < FRAMES_PER_STATE:
 
@@ -158,10 +167,27 @@ for obj_type, color_name in FSM_SEQUENCE:
         out.write(bgr)
         frames += 1
 
+    # End timer for this color/state
+    end_time = time.time()
+    elapsed = end_time - start_time
+    fps = frames / elapsed
+    fps_per_color[f"{color_name}_{obj_type}"] = fps
+    total_frames += frames
+    total_time += elapsed
+
 # -----------------------------------
 # Cleanup
 # -----------------------------------
 out.release()
 picam2.stop()
 
+# -----------------------------------
+# PRINT FPS RESULTS
+# -----------------------------------
 print("\nFSM complete! Saved as:", video_path)
+print("\nAverage FPS per color/state:")
+for k, v in fps_per_color.items():
+    print(f"  {k}: {v:.2f} FPS")
+
+overall_fps = total_frames / total_time
+print(f"\nOverall average FPS: {overall_fps:.2f} FPS")
