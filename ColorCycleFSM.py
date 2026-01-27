@@ -19,7 +19,7 @@ FPS = 80
 # -----------------------------------
 # VIDEO SAVE LOCATION
 # -----------------------------------
-video_folder = "media/videos"
+video_folder = "/home/asgc/Videos"
 os.makedirs(video_folder, exist_ok=True)
 video_path = os.path.join(video_folder, "fsm_detect_output.mp4")
 
