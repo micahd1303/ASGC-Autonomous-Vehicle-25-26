@@ -4,7 +4,7 @@ import os
 from picamera2 import Picamera2
 
 # -----------------------------------
-# TOGGLE FSM
+# TOGGLE FSM TESTING SSH PUSH TO GITHUB PLEASE WORKKKK
 # -----------------------------------
 RUN_BALLS = False
 RUN_BUCKETS = True
