@@ -6,7 +6,7 @@ from picamera2 import Picamera2
 # -----------------------------------
 # TOGGLE FSM TESTING SSH PUSH TO GITHUB PLEASE WORKKKK
 # -----------------------------------
-RUN_BALLS = False
+RUN_BALLS = True
 RUN_BUCKETS = True
 
 # -----------------------------------
@@ -37,18 +37,18 @@ COLOR_RANGES = {
         ((165, 80, 50), (180, 255, 255)),
     ],
     "GREEN": [
-        ((40, 30, 30), (90, 255, 120)),   # dark green (balls)
-        ((40, 80, 120), (90, 255, 255)),  # bright green (buckets)
+        ((40, 100, 10), (90, 255, 200)),   # Works well for buckets
+ #       ((40, 80, 120), (90, 255, 255)),  # bright green need to optimize for balls)
     ],
     "BLUE":  [((100, 150, 0), (140, 255, 255))],
-    "YELLOW":[((20, 100, 100), (35, 255, 255))]
+    "YELLOW":[((25, 180, 100), (35, 255, 255))]
 }
 
 # -----------------------------------
 # DETECTION PARAMETERS
 # -----------------------------------
-BALL_MIN_AREA = 100
-BUCKET_MIN_AREA = 2000
+BALL_MIN_AREA = 300
+BUCKET_MIN_AREA = 1500
 
 BALL_AR_MIN, BALL_AR_MAX = 0.9, 1.1      # nearly square (ignored for now)
 BUCKET_AR_MIN, BUCKET_AR_MAX = 1.3, 3.5  # rectangle-ish (ignored for now)
@@ -135,9 +135,8 @@ for obj_type, color_name in FSM_SEQUENCE:
                 x, y, w, h = cv2.boundingRect(cnt)
                 ar = w / float(h)
 
-                # Temporarily ignore aspect ratio
-                # if not (BALL_AR_MIN <= ar <= BALL_AR_MAX):
-                #     continue
+                #if not (BALL_AR_MIN <= ar <= BALL_AR_MAX):
+                    #continue
 
                 cv2.rectangle(bgr, (x, y), (x+w, y+h), (0,255,0), 2)
                 cv2.putText(bgr, f"{color_name} BALL", (x, y-10),
