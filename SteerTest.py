@@ -12,7 +12,7 @@ FRAME_HEIGHT = 720
 # HSV RANGE (START WITH GREEN)
 # -----------------------------------
 HSV_RANGES = [ # THESE ARE ALL MONEY as of 1/30 in daylight
-    #((40, 140, 10), (90, 255, 200)),  # GREEN
+    ((40, 140, 10), (90, 255, 200)),  # GREEN
     # ((100, 150, 0), (140, 255, 255)),  # BLUE if needed
     #((25, 180, 100), (35, 255, 255)), # Yellow
     #((0, 80, 50), (10, 255, 255)),

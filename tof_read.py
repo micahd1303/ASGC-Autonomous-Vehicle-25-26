@@ -27,7 +27,7 @@ try:
             print(frame)
         else:
             print("bad frame")
-        time.sleep(0.1)
+        time.sleep(0.15)
 
 except KeyboardInterrupt:
     print("done")
