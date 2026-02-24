@@ -17,25 +17,33 @@ from gpiozero import PWMOutputDevice
 from time import sleep
 
 # DS3218 supports 50-330Hz; 50Hz is standard 
-servo = PWMOutputDevice(17, frequency=50)
+servo = PWMOutputDevice(17, frequency=200)
 
 def set_servo_micros(micros):
-    period_us = 20_000  # 20ms period for 50Hz
+    period_us = 20_000/4  # 20ms period for 50Hz
     duty_cycle = micros / period_us
     servo.value = duty_cycle
     print(f"Sending {micros}µs pulse")
 
 try:
-    # 1. Close to the bottom (datasheet min is 500µs )
+    # 1. Almost fully open (datasheet min is 500µs )
     set_servo_micros(700) 
     sleep(3)
 
-    # 2. Middle / Neutral (datasheet neutral is 1500µs )
-    set_servo_micros(1500)
+    # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
+    set_servo_micros(1100)
     sleep(3)
 
-    # 3. Close to the top (datasheet max is 2500µs )
-    set_servo_micros(2300)
+    # 1. Close to fully open (datasheet min is 500µs )
+    set_servo_micros(700) 
+    sleep(3)
+
+    # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
+    set_servo_micros(1100)
+    sleep(3)
+    
+     # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
+    set_servo_micros(700)
     sleep(3)
 
 finally:
