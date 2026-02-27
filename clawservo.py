@@ -26,25 +26,34 @@ def set_servo_micros(micros):
     print(f"Sending {micros}µs pulse")
 
 try:
+     # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
+    set_servo_micros(2400)
+    sleep(3)
+     
     # 1. Almost fully open (datasheet min is 500µs )
-    set_servo_micros(700) 
+    set_servo_micros(600) 
     sleep(3)
 
     # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(1100)
+    set_servo_micros(2400)
     sleep(3)
 
-    # 1. Close to fully open (datasheet min is 500µs )
-    set_servo_micros(700) 
+    # 1. Almost fully open (datasheet min is 500µs )
+    set_servo_micros(600) 
     sleep(3)
 
     # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(1100)
+    set_servo_micros(2400)
     sleep(3)
     
-     # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(700)
+    # 1. Almost fully open (datasheet min is 500µs )
+    set_servo_micros(600) 
     sleep(3)
+    
+        # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
+    set_servo_micros(2400)
+    sleep(3)
+
 
 finally:
     servo.off() # Stop signal to let the motor rest
