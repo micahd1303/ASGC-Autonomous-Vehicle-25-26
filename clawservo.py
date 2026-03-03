@@ -27,31 +27,31 @@ def set_servo_micros(micros):
 
 try:
      # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(2400)
+    set_servo_micros(1000)
     sleep(3)
      
     # 1. Almost fully open (datasheet min is 500µs )
-    set_servo_micros(600) 
+    set_servo_micros(650) 
     sleep(3)
 
     # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(2400)
+    set_servo_micros(1000)
     sleep(3)
 
     # 1. Almost fully open (datasheet min is 500µs )
-    set_servo_micros(600) 
+    set_servo_micros(650) 
     sleep(3)
 
     # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(2400)
+    set_servo_micros(1000)
     sleep(3)
     
     # 1. Almost fully open (datasheet min is 500µs )
-    set_servo_micros(600) 
+    set_servo_micros(650) 
     sleep(3)
     
         # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(2400)
+    set_servo_micros(1000)
     sleep(3)
 
 

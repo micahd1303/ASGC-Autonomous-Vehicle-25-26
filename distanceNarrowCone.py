@@ -18,7 +18,7 @@ def get_center_average(raw_data):
     for i in range(0, len(raw_data), 2):
         distances.append((raw_data[i+1] << 8) | raw_data[i])
     # Center 4 pixels of the 8x8 grid
-    center_indices = [27, 28, 35, 36]
+    center_indices = [35, 36, 43, 44]
     return sum(distances[idx] for idx in center_indices) / 4.0
 
 def run_mission():
