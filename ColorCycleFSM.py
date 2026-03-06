@@ -106,6 +106,7 @@ for obj_type, color_name in FSM_SEQUENCE:
 
         # Capture & convert
         frame = picam2.capture_array()
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
         bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 
