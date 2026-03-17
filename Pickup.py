@@ -1,24 +1,7 @@
 import cv2
 import numpy as np
 import time
-import sys
-from collections import deque
 from picamera2 import Picamera2
-
-# -------------------------------
-# IMPORT MATRIX LIDAR
-# -------------------------------
-sys.path.append("/home/asgc/ASGC-Autonomous-Vehicle-25-26/DFRobot_MatrixLidar/python")
-from raspberry.DFRobot_matrixLidar import DFRobot_matrixLidar_i2c
-
-I2C_ADDRESS = 0x33
-WINDOW_SIZE = 5
-
-tof = DFRobot_matrixLidar_i2c(I2C_ADDRESS)
-history = deque(maxlen=WINDOW_SIZE)
-center_indices = [35, 36, 43, 44]
-
-DISTANCE_TRIGGER = 500  # mm
 
 # -------------------------------
 # CAMERA CONFIG
@@ -41,96 +24,49 @@ BLUE_HIGH = (140,255,255)
 
 BALL_MIN_AREA = 300
 AR_MIN = 0.7
-AR_MAX = 1.3
+AR_MAX = 4.5
 
 # -------------------------------
-# STEERING VISUALIZATION
+# AREA TIERS
 # -------------------------------
-DEADZONE_FRAC = 0.15
+FAR_THRESH = 3000
+MED_THRESH = 20000
+CLOSE_THRESH = 40000
+
+# Deadzone sizes (fraction of frame width)
+DEADZONE_FAR = 0.10     # very sensitive
+DEADZONE_MED = 0.20
+DEADZONE_CLOSE = 0.35   # very stable
+
 STEER_BAR_PIXELS = 250
 
 # -------------------------------
-# WINDOW SETUP
+# WINDOW
 # -------------------------------
-cv2.namedWindow("Detection", cv2.WINDOW_NORMAL)
-cv2.namedWindow("Mask", cv2.WINDOW_NORMAL)
 cv2.namedWindow("Steering Debug", cv2.WINDOW_NORMAL)
-
-# -------------------------------
-# DISTANCE FUNCTIONS
-# -------------------------------
-def get_center_pixels(raw_data):
-
-    distances = [(raw_data[i+1]<<8)|raw_data[i] for i in range(0,len(raw_data),2)]
-
-    return [distances[i] for i in center_indices]
-
-
-def get_filtered_distance():
-
-    data = tof.get_all_data()
-
-    if not data:
-        return None
-
-    pixels = get_center_pixels(data)
-
-    raw_avg = sum(pixels)/len(pixels)
-
-    history.append(raw_avg)
-
-    filt_avg = sum(history)/len(history)
-
-    return filt_avg
-
-
-# -------------------------------
-# INITIALIZE DISTANCE SENSOR
-# -------------------------------
-print("Initializing TOF...")
-
-while tof.begin()!=0:
-    print("TOF init failed... retrying")
-    time.sleep(1)
-
-tof.set_Ranging_Mode(8)
-
-print("TOF ready")
-
-# -------------------------------
-# TARGET LOCK VARIABLES
-# -------------------------------
-locked_target = None
 
 # -------------------------------
 # MAIN LOOP
 # -------------------------------
 while True:
 
-    prev_time = time.time()
-    
     frame = picam2.capture_array()
-
     frame = cv2.rotate(frame, cv2.ROTATE_180)
 
     bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 
     # -------------------------------
-    # BLUE MASK
+    # MASK
     # -------------------------------
-    lower = np.array(BLUE_LOW)
-    upper = np.array(BLUE_HIGH)
-
-    mask = cv2.inRange(hsv, lower, upper)
+    mask = cv2.inRange(hsv, np.array(BLUE_LOW), np.array(BLUE_HIGH))
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
     # -------------------------------
-    # FIND CONTOURS
+    # CONTOURS
     # -------------------------------
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -140,12 +76,10 @@ while True:
     for cnt in contours:
 
         area = cv2.contourArea(cnt)
-
         if area < BALL_MIN_AREA:
             continue
 
         x,y,w,h = cv2.boundingRect(cnt)
-
         ar = w/float(h)
 
         if not (AR_MIN <= ar <= AR_MAX):
@@ -156,152 +90,124 @@ while True:
             best_contour = cnt
 
     # -------------------------------
-    # LOCK ONTO LARGEST OBJECT
+    # STEERING DEBUG FRAME
     # -------------------------------
-    if best_contour is not None:
-
-        x,y,w,h = cv2.boundingRect(best_contour)
-
-        ar = w/float(h)
-
-        cv2.rectangle(bgr,(x,y),(x+w,y+h),(0,255,0),2)
-
-        cv2.putText(
-            bgr,
-            f"AR={ar:.2f} A={int(best_area)}",
-            (x,y-10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0,255,0),
-            2
-        )
-
-        locked_target = (x,y,w,h)
-        
-        
-        current_time = time.time()
-        fps = 1/(current_time - prev_time)
-        prev_time = current_time
-
-        cv2.putText(
-            bgr,
-            f"FPS: {fps:.1f}",
-            (40,140),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (255,255,0),
-            3
-)
-# -------------------------------
-# STEERING VISUALIZATION
-# -------------------------------
-    steer_frame = bgr.copy()
+    debug = bgr.copy()
 
     center_x = FRAME_WIDTH // 2
-    deadzone_half = int(FRAME_WIDTH * DEADZONE_FRAC / 2)
 
-    left_bound = center_x - deadzone_half
-    right_bound = center_x + deadzone_half
-
-    # Region overlay
-    overlay = steer_frame.copy()
-
-    cv2.rectangle(overlay, (0,0), (left_bound, FRAME_HEIGHT), (255,0,0), -1)
-    cv2.rectangle(overlay, (left_bound,0), (right_bound,FRAME_HEIGHT), (0,255,0), -1)
-    cv2.rectangle(overlay, (right_bound,0), (FRAME_WIDTH,FRAME_HEIGHT), (0,0,255), -1)
-
-    steer_frame = cv2.addWeighted(overlay,0.15,steer_frame,0.85,0)
-
-    # Deadzone lines
-    cv2.line(steer_frame,(left_bound,0),(left_bound,FRAME_HEIGHT),(255,255,255),2)
-    cv2.line(steer_frame,(right_bound,0),(right_bound,FRAME_HEIGHT),(255,255,255),2)
-
-    command = "SEARCHING"
     norm_error = 0.0
+    command = "SEARCHING"
+    tier = "NONE"
+    deadzone_frac = DEADZONE_MED
 
     if best_contour is not None:
 
         x,y,w,h = cv2.boundingRect(best_contour)
-
         obj_cx = x + w//2
-        error = obj_cx - center_x
 
-        norm_error = error / center_x
-        norm_error = np.clip(norm_error,-1.0,1.0)
+        # -------------------------------
+        # DETERMINE TIER
+        # -------------------------------
+        if best_area < FAR_THRESH:
+            tier = "FAR"
+            deadzone_frac = DEADZONE_FAR
 
-        if obj_cx < left_bound:
-            command = "STEER LEFT"
+        elif best_area < MED_THRESH:
+            tier = "MED"
+            deadzone_frac = DEADZONE_MED
 
-        elif obj_cx > right_bound:
-            command = "STEER RIGHT"
+        elif best_area > CLOSE_THRESH:
+            tier = "CLOSE"
+            deadzone_frac = DEADZONE_CLOSE
 
         else:
-            command = "GO STRAIGHT"
+            tier = "MED"
+            deadzone_frac = DEADZONE_MED
 
-        cv2.circle(steer_frame,(obj_cx,y+h//2),6,(0,255,255),-1)
+        # -------------------------------
+        # ERROR CALC
+        # -------------------------------
+        error = obj_cx - center_x
+        norm_error = error / center_x
+        norm_error = np.clip(norm_error, -1.0, 1.0)
 
-    # steering magnitude bar
+        # Deadzone boundaries
+        deadzone_half = int(FRAME_WIDTH * deadzone_frac / 2)
+        left_bound = center_x - deadzone_half
+        right_bound = center_x + deadzone_half
+
+        # -------------------------------
+        # COMMAND
+        # -------------------------------
+        if obj_cx < left_bound:
+            command = "LEFT"
+        elif obj_cx > right_bound:
+            command = "RIGHT"
+        else:
+            command = "STRAIGHT"
+            norm_error = 0.0
+
+        # draw bounding box
+        cv2.rectangle(debug,(x,y),(x+w,y+h),(0,255,0),2)
+        cv2.circle(debug,(obj_cx,y+h//2),6,(0,255,255),-1)
+
+    else:
+        deadzone_half = int(FRAME_WIDTH * deadzone_frac / 2)
+        left_bound = center_x - deadzone_half
+        right_bound = center_x + deadzone_half
+
+    # -------------------------------
+    # DRAW ZONES
+    # -------------------------------
+    overlay = debug.copy()
+
+    cv2.rectangle(overlay,(0,0),(left_bound,FRAME_HEIGHT),(255,0,0),-1)
+    cv2.rectangle(overlay,(left_bound,0),(right_bound,FRAME_HEIGHT),(0,255,0),-1)
+    cv2.rectangle(overlay,(right_bound,0),(FRAME_WIDTH,FRAME_HEIGHT),(0,0,255),-1)
+
+    debug = cv2.addWeighted(overlay,0.15,debug,0.85,0)
+
+    # boundary lines
+    cv2.line(debug,(left_bound,0),(left_bound,FRAME_HEIGHT),(255,255,255),2)
+    cv2.line(debug,(right_bound,0),(right_bound,FRAME_HEIGHT),(255,255,255),2)
+
+    # -------------------------------
+    # STEERING BAR
+    # -------------------------------
     bar_len = int(norm_error * STEER_BAR_PIXELS)
 
     cv2.line(
-        steer_frame,
+        debug,
         (center_x,FRAME_HEIGHT-40),
         (center_x+bar_len,FRAME_HEIGHT-40),
         (0,255,255),
         6
     )
 
-    cv2.putText(
-        steer_frame,
-        command,
-        (40,60),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1.2,
-        (255,255,255),
-        3
-)
     # -------------------------------
-    # READ DISTANCE SENSOR
+    # TEXT
     # -------------------------------
-    distance = get_filtered_distance()
+    cv2.putText(debug,f"Cmd: {command}",(40,60),
+                cv2.FONT_HERSHEY_SIMPLEX,1.2,(255,255,255),3)
 
-    if distance is not None:
+    cv2.putText(debug,f"Tier: {tier}",(40,110),
+                cv2.FONT_HERSHEY_SIMPLEX,1.0,(0,255,255),2)
 
-        cv2.putText(
-            bgr,
-            f"Distance: {int(distance)} mm",
-            (40,40),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0,255,255),
-            3
-        )
+    cv2.putText(debug,f"Area: {int(best_area)}",(40,150),
+                cv2.FONT_HERSHEY_SIMPLEX,1.0,(0,255,255),2)
 
-        if distance < DISTANCE_TRIGGER:
-
-            cv2.putText(
-                bgr,
-                "USE DISTANCE SENSOR MODE",
-                (40,90),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0,0,255),
-                3
-            )
-
-            print("DISTANCE < 500mm : SWITCH TO DISTANCE SENSOR")
+    cv2.putText(debug,f"Err: {norm_error:+.2f}",(40,190),
+                cv2.FONT_HERSHEY_SIMPLEX,1.0,(0,255,255),2)
 
     # -------------------------------
-    # SHOW WINDOWS
+    # SHOW
     # -------------------------------
-    cv2.imshow("Detection",bgr)
-    cv2.imshow("Steering Debug", steer_frame)
-    cv2.imshow("Mask",mask)
+    cv2.imshow("Steering Debug", debug)
+    cv2.imshow("Mask", mask)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-
 picam2.stop()
-
 cv2.destroyAllWindows()
