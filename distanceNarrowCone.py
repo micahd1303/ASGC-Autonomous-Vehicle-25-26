@@ -1,57 +1,45 @@
 import sys
 import time
+import csv
 from collections import deque
-# Path to your DFRobot library
 sys.path.append("/home/asgc/ASGC-Autonomous-Vehicle-25-26/DFRobot_MatrixLidar/python")
 from raspberry.DFRobot_matrixLidar import DFRobot_matrixLidar_i2c
 
-# Settings
-WINDOW_SIZE = 5  # Average of last 5 frames (~0.25 seconds of data)
 I2C_ADDRESS = 0x33
+WINDOW_SIZE = 10
+LOG_FILE = "tof_calibration.csv"
+
 tof = DFRobot_matrixLidar_i2c(I2C_ADDRESS)
-
-# This stores our sliding window of averages
 history = deque(maxlen=WINDOW_SIZE)
+center_indices = [35, 36, 43, 44]
 
-def get_center_average(raw_data):
-    distances = []
-    for i in range(0, len(raw_data), 2):
-        distances.append((raw_data[i+1] << 8) | raw_data[i])
-    # Center 4 pixels of the 8x8 grid
-    center_indices = [27, 28, 35, 36]
-    return sum(distances[idx] for idx in center_indices) / 4.0
+def get_center_pixels(raw_data):
+    distances = [(raw_data[i+1]<<8)|raw_data[i] for i in range(0,len(raw_data),2)]
+    return [distances[i] for i in center_indices]
 
-def run_mission():
-    print("System Online. Filtering active.")
-    try:
-        while True:
+def run_calibration(actual_distance_mm):
+    with open(LOG_FILE,"a",newline="") as f:
+        writer = csv.writer(f)
+        for _ in range(200):  # ~10s of data at 50ms intervals
             data = tof.get_all_data()
-            if not data: continue
-
-            # 1. Get current raw center average
-            current_raw = get_center_average(data)
-            
-            # 2. Add to history (automatically pushes out oldest if size > 5)
-            history.append(current_raw)
-            
-            # 3. Calculate filtered average
-            filtered_avg = sum(history) / len(history)
-
-            # Logic Triggers (Using Filtered Data)
-            if len(history) == WINDOW_SIZE: # Wait until buffer is full
-                if filtered_avg <= 200:
-                    print(f"DEBUG: RAW={current_raw:.0f} | FILT={filtered_avg:.0f} >>> INITIATE CLAW <<<")
-                elif filtered_avg <= 700:
-                    print(f"DEBUG: RAW={current_raw:.0f} | FILT={filtered_avg:.0f} >>> BALL FOUND <<<")
-                else:
-                    print(f"Scanning... Clear ({filtered_avg:.0f}mm)   ", end='\r')
-            
+            if not data: 
+                continue
+            pixels = get_center_pixels(data)
+            raw_avg = sum(pixels)/len(pixels)
+            history.append(raw_avg)
+            filt_avg = sum(history)/len(history)
+            writer.writerow([actual_distance_mm,*pixels,raw_avg,filt_avg])
             time.sleep(0.05)
 
-    except KeyboardInterrupt:
-        print("\nStopping...")
-
-if __name__ == "__main__":
-    while tof.begin() != 0: time.sleep(1)
+if __name__=="__main__":
+    while tof.begin()!=0: time.sleep(1)
     tof.set_Ranging_Mode(8)
-    run_mission()
+    # Write header
+    with open(LOG_FILE,"w",newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Actual_mm","Pixel35","Pixel36","Pixel43","Pixel44","RawAvg","FiltAvg"])
+    # Example distances to test
+    for d in [100,200,300,400,500,600,700]:
+        input(f"Place ball at {d} mm and press Enter...")
+        run_calibration(d)
+    print("Calibration complete!")
