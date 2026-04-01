@@ -14,7 +14,7 @@ def send_pulse(servo, micros):
     servo.value = duty
 
 # ==========================================================
-# 🛑 CALIBRATION ZONE 🛑
+#  CALIBRATION ZONE 
 # You must find these 4 exact numbers for your physical setup
 # ==========================================================
 
