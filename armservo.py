@@ -1,8 +1,8 @@
 from gpiozero import PWMOutputDevice
 from time import sleep
 
-SERVO1_PIN = 17
-SERVO2_PIN = 18
+SERVO1_PIN = 17 #right servo
+SERVO2_PIN = 18 #left servo
 
 servo1 = PWMOutputDevice(SERVO1_PIN, frequency=200)
 servo2 = PWMOutputDevice(SERVO2_PIN, frequency=200)

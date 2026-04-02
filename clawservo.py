@@ -1,59 +1,45 @@
-#from gpiozero import PWMOutputDevice
-#from time import sleep
-
-# 50 Hz servo signal on GPIO 17
-#servo = PWMOutputDevice(17, frequency=50)
-
-# 800 µs pulse width
-#pulse_width_us = 2000
-#period_us = 1_000_000 / 50  # 20,000 µs
-#duty_cycle = pulse_width_us / period_us
-
-#servo.value = duty_cycle  # send 800 µs
-#sleep(2)                  # hold for .2 seconds
-#servo.off()               # stop signal
-
 from gpiozero import PWMOutputDevice
 from time import sleep
 
-# DS3218 supports 50-330Hz; 50Hz is standard 
-servo = PWMOutputDevice(17, frequency=200)
+# Frequency for DS3218 (50-330Hz supported)
+FREQ = 200
 
-def set_servo_micros(micros):
-    period_us = 20_000/4  # 20ms period for 50Hz
+# Initialize servos on GPIO 17 and GPIO 27
+servo1 = PWMOutputDevice(17, frequency=FREQ)
+servo2 = PWMOutputDevice(27, frequency=FREQ)
+
+def set_servo_micros(servo_device, micros):
+    """
+    Sets the pulse width in microseconds for a specific servo.
+    period_us = 1,000,000 / frequency
+    """
+    period_us = 1_000_000 / FREQ 
     duty_cycle = micros / period_us
-    servo.value = duty_cycle
-    print(f"Sending {micros}µs pulse")
+    
+    # Ensure duty cycle stays within 0.0 and 1.0
+    servo_device.value = max(0, min(1, duty_cycle))
+    print(f"GPIO {servo_device.pin.number}: Sending {micros}µs pulse")
 
 try:
-     # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(1000)
-    sleep(3)
-     
-    # 1. Almost fully open (datasheet min is 500µs )
-    set_servo_micros(650) 
-    sleep(3)
+    # --- Example Sequence ---
 
-    # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(1000)
-    sleep(3)
-
-    # 1. Almost fully open (datasheet min is 500µs )
-    set_servo_micros(650) 
-    sleep(3)
-
-    # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(1000)
+    # Move Servo 1 to 2350µs and Servo 2 to 650µs
+    set_servo_micros(servo1, 2350)
+    set_servo_micros(servo2, 650)
     sleep(3)
     
-    # 1. Almost fully open (datasheet min is 500µs )
-    set_servo_micros(650) 
-    sleep(3)
-    
-        # 2. Closed claw (1500 was a little too far) (datasheet neutral is 1500µs )
-    set_servo_micros(1000)
+    # Move Servo 1 to 650µs and Servo 2 to 2350µs
+    set_servo_micros(servo1, 650)
+    set_servo_micros(servo2, 2350)
     sleep(3)
 
+    # Move them both to neutral (1500µs)
+    set_servo_micros(servo1, 1500)
+    set_servo_micros(servo2, 1500)
+    sleep(3)
 
 finally:
-    servo.off() # Stop signal to let the motor rest
+    # Clean up: stop signals for both
+    servo1.off()
+    servo2.off()
+    print("Servos detached.")
