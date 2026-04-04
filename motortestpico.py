@@ -1,27 +1,20 @@
 import serial
 import time
 
-print("Connecting to Pico...")
-# Open the serial port to the Pico
+print("Opening port...")
 pico = serial.Serial('/dev/ttyACM0', 115200, timeout=1)
 
-# CRITICAL: Wait 2 seconds for the Pico to boot up after opening the port
+# Wait 2 seconds for the Pico to finish its boot sequence
 time.sleep(2) 
 
-print("Commanding: NEUTRAL")
-pico.write(b'NEUTRAL\n')
-pico.flush()
-time.sleep(3) # Wait 3 seconds with motor stopped
-
-print("Commanding: FORWARD (1% Power)")
+print("Sending FORWARD command...")
 pico.write(b'FORWARD\n')
 pico.flush()
-time.sleep(3) # Motor should slowly spin for 3 seconds
+time.sleep(3) # Let it spin for 3 seconds
 
-print("Commanding: NEUTRAL")
+print("Sending NEUTRAL command...")
 pico.write(b'NEUTRAL\n')
 pico.flush()
-time.sleep(2) # Motor stops
 
 pico.close()
-print("Test complete.")
+print("Test Complete")
