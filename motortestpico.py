@@ -3,39 +3,47 @@ import time
 
 print("Connecting to Pico...")
 pico = serial.Serial('/dev/ttyACM0', 115200, timeout=1)
-
-# Wait 2 seconds for the Pico to boot
 time.sleep(2) 
 
-def motorspeed(target_duty):
-    """
-    Sends a target duty cycle to the Pico. 
-    The Pico will automatically ramp to this speed over 1 second.
-    """
-    command_str = f"SPEED {target_duty}\n"
-    print(f"Commanding: {command_str.strip()}")
-    
-    # Send the string down the USB cable
+def drive(percentage):
+    """Tells the Pico to drive at a specific percentage (-100 to 100)."""
+    command_str = f"DRIVE {percentage}\n"
+    print(f"\nPi 5: Requesting {percentage}% power...")
     pico.write(command_str.encode('utf-8'))
     pico.flush()
+    
+    # Listen for the Pico's acknowledgment
+    time.sleep(0.1)
+    if pico.in_waiting > 0:
+        reply = pico.readline().decode('utf-8').strip()
+        print(f"Pico: {reply}")
+
+def stop():
+    """Tells the Pico to ramp down to 0%."""
+    print("\nPi 5: Requesting Full Stop...")
+    pico.write(b"STOP\n")
+    pico.flush()
+    
+    time.sleep(0.1)
+    if pico.in_waiting > 0:
+        reply = pico.readline().decode('utf-8').strip()
+        print(f"Pico: {reply}")
 
 try:
-    print("\n--- Starting Acceleration Test ---")
+    print("\n--- Testing Percentage Abstraction ---")
     
-    # Command the Pico to ramp up to 5100
-    motorspeed(5100)
+    # Drive forward at 15% power
+    drive(5)
+    time.sleep(4) # 1s ramp + 3s driving
     
-    # The Pi 5 waits 4 seconds total here. 
-    # (1 second for the Pico to finish ramping, plus 3 seconds of driving).
-    time.sleep(4)
+    # Drive backward at 10% power
+    drive(-5)
+    time.sleep(4) 
     
-    # Command the Pico to ramp gracefully back down to true neutral
-    print("\n--- Ramping Down ---")
-    motorspeed(4915)
-    
-    # Wait 2 seconds to let the deceleration finish before closing the script
+    # Ramp back to exactly 0%
+    stop()
     time.sleep(2)
 
 finally:
     pico.close()
-    print("Test complete.")
+    print("\nTest complete.")
