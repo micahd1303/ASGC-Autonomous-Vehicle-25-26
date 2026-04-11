@@ -32,8 +32,8 @@ pico = serial.Serial('/dev/ttyACM0', 115200, timeout=1)
 time.sleep(2) # Let Pico boot
 
 def drive(throttle, turn):
-    left_speed = max(-100.0, min(100.0, throttle + turn))
-    right_speed = max(-100.0, min(100.0, (throttle - turn) * -1)) # Mechanical flip
+    left_speed = max(-100.0, min(100.0, throttle + turn) * -1)
+    right_speed = max(-100.0, min(100.0, (throttle - turn))) # Mechanical flip
     
     command_str = f"DRIVE {left_speed} {right_speed}\n"
     pico.write(command_str.encode('utf-8'))
