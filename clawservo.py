@@ -22,21 +22,29 @@ def set_servo_micros(servo_device, micros):
 
 try:
     # --- Example Sequence ---
-
+	
+    
     # Move Servo 1 to 2350µs and Servo 2 to 650µs
     set_servo_micros(servo1, 2350)
-    set_servo_micros(servo2, 650)
+    set_servo_micros(servo2, 650) 
     sleep(3)
     
     # Move Servo 1 to 650µs and Servo 2 to 2350µs
     set_servo_micros(servo1, 650)
     set_servo_micros(servo2, 2350)
     sleep(3)
-
-    # Move them both to neutral (1500µs)
-    set_servo_micros(servo1, 1500)
-    set_servo_micros(servo2, 1500)
+    
+        # Move Servo 1 to 2350µs and Servo 2 to 650µs
+    set_servo_micros(servo1, 2350)
+    set_servo_micros(servo2, 650) 
     sleep(3)
+    
+    # Move Servo 1 to 650µs and Servo 2 to 2350µs
+    set_servo_micros(servo1, 650)
+    set_servo_micros(servo2, 2350)
+    sleep(3)
+    
+  
 
 finally:
     # Clean up: stop signals for both
