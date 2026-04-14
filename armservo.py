@@ -1,58 +1,53 @@
 from gpiozero import PWMOutputDevice
 from time import sleep
 
-SERVO1_PIN = 17 #right servo
-SERVO2_PIN = 18 #left servo
+# Frequency for DS3218 (50-330Hz supported)
+FREQ = 200
 
-servo1 = PWMOutputDevice(SERVO1_PIN, frequency=200)
-servo2 = PWMOutputDevice(SERVO2_PIN, frequency=200)
+# Initialize servos on GPIO 17 and GPIO 27
+servo1 = PWMOutputDevice(17, frequency=FREQ)
+servo2 = PWMOutputDevice(27, frequency=FREQ)
 
-PERIOD_US = 5000  # 200 Hz PWM period
-NEUTRAL = 1500
-
-def send_pulse(servo, micros):
-    duty = micros / PERIOD_US
-    servo.value = duty
-
-def set_servos(micros):
-    mirrored = 3000 - micros
-
-    send_pulse(servo1, micros)
-    send_pulse(servo2, mirrored)
-
-    print(f"Servo1: {micros} µs | Servo2: {mirrored} µs")
-
-
-def move_servos(start, end, step=5, delay=0.01):
-    if start < end:
-        rng = range(start, end, step)
-    else:
-        rng = range(start, end, -step)
-
-    for micros in rng:
-        set_servos(micros)
-        sleep(delay)
-
-    set_servos(end)
-
+def set_servo_micros(servo_device, micros):
+    """
+    Sets the pulse width in microseconds for a specific servo.
+    period_us = 1,000,000 / frequency
+    """
+    period_us = 1_000_000 / FREQ 
+    duty_cycle = micros / period_us
+    
+    # Ensure duty cycle stays within 0.0 and 1.0
+    servo_device.value = max(0, min(1, duty_cycle))
+    print(f"GPIO {servo_device.pin.number}: Sending {micros}µs pulse")
 
 try:
-
-    LOWER = 1000
-    RAISE = 1700
-
-    while True:
-
-        print("Raising arm")
-        move_servos(LOWER, RAISE)
-
-        sleep(2)
-
-        print("Lowering arm")
-        move_servos(RAISE, LOWER)
-
-        sleep(2)
+    # --- Example Sequence ---
+	
+    
+    # Move Servo 1 to 2350µs and Servo 2 to 650µs
+    set_servo_micros(servo1, 2350)
+    set_servo_micros(servo2, 650) 
+    sleep(3)
+    
+    # Move Servo 1 to 650µs and Servo 2 to 2350µs
+    set_servo_micros(servo1, 650)
+    set_servo_micros(servo2, 2350)
+    sleep(3)
+    
+        # Move Servo 1 to 2350µs and Servo 2 to 650µs
+    set_servo_micros(servo1, 2350)
+    set_servo_micros(servo2, 650) 
+    sleep(3)
+    
+    # Move Servo 1 to 650µs and Servo 2 to 2350µs
+    set_servo_micros(servo1, 650)
+    set_servo_micros(servo2, 2350)
+    sleep(3)
+    
+  
 
 finally:
+    # Clean up: stop signals for both
     servo1.off()
     servo2.off()
+    print("Servos detached.")

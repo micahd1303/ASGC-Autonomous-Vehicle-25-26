@@ -25,23 +25,11 @@ try:
 	
     
     # Move Servo 1 to 2350µs and Servo 2 to 650µs
-    set_servo_micros(servo1, 2350)
-    set_servo_micros(servo2, 650) 
+    set_servo_micros(servo1, 1300)
     sleep(3)
     
     # Move Servo 1 to 650µs and Servo 2 to 2350µs
-    set_servo_micros(servo1, 650)
-    set_servo_micros(servo2, 2350)
-    sleep(3)
-    
-        # Move Servo 1 to 2350µs and Servo 2 to 650µs
-    set_servo_micros(servo1, 2350)
-    set_servo_micros(servo2, 650) 
-    sleep(3)
-    
-    # Move Servo 1 to 650µs and Servo 2 to 2350µs
-    set_servo_micros(servo1, 650)
-    set_servo_micros(servo2, 2350)
+    set_servo_micros(servo1, 1700)
     sleep(3)
     
   
