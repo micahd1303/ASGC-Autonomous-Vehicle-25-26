@@ -106,11 +106,11 @@ while True:
 # TUNING
 # -----------------------------------------------
 MAX_TURN        = 4.0
-BASE_THROTTLE   = 5.0
+BASE_THROTTLE   = 6.5
 SEARCH_TURN     = 4.0
-DRIVE_STOP_DIST = 200
-DRIVE_SLOW_DIST = 300
-DRIVE_SLOW_MULT = 0.4
+DRIVE_STOP_DIST = 300
+DRIVE_SLOW_DIST = 400
+DRIVE_SLOW_MULT = 0.6
 
 last_left  = None
 last_right = None
@@ -156,7 +156,7 @@ MED_THRESH     = 20000
 CLOSE_THRESH   = 40000
 DEADZONE_FAR   = 0.10
 DEADZONE_MED   = 0.20
-DEADZONE_CLOSE = 0.35
+DEADZONE_CLOSE = 0.25
 
 # -----------------------------------------------
 # CAMERA THREAD

@@ -39,7 +39,7 @@ def run_test():
             
             # Process bytes into distance values (mm)
             distances = []
-            for i in range(0, len(data), 2):
+            for i in range(0, len(data) - 1, 2):
                 low_byte = data[i]
                 high_byte = data[i + 1]
                 combined = (high_byte << 8) | low_byte
