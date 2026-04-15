@@ -1,11 +1,43 @@
 import sys
 import time
 import serial
+import glob
 import threading
 import cv2
 import numpy as np
 from collections import deque
 from picamera2 import Picamera2
+from gpiozero import Button
+
+# -----------------------------------------------
+# SWITCH / COLOR SETUP
+# -----------------------------------------------
+SW1 = Button(17, pull_up=True)  # bit A
+SW2 = Button(27, pull_up=True)  # bit B
+
+COLOR_RANGES = {
+    "RED": [
+        ((  0,  80,  50), ( 10, 255, 255)),
+        ((165,  80,  50), (180, 255, 255)),
+    ],
+    "YELLOW": [
+        (( 25, 180, 100), ( 35, 255, 255)),
+    ],
+    "GREEN": [
+        (( 40, 100,  10), ( 90, 255, 200)),
+    ],
+    "BLUE": [
+        ((100, 150,   0), (140, 255, 255)),
+    ],
+}
+
+def get_active_color():
+    A = 0 if SW1.is_pressed else 1
+    B = 0 if SW2.is_pressed else 1
+    if   (A, B) == (0, 0): return "RED",    COLOR_RANGES["RED"]
+    elif (A, B) == (0, 1): return "YELLOW", COLOR_RANGES["YELLOW"]
+    elif (A, B) == (1, 0): return "GREEN",  COLOR_RANGES["GREEN"]
+    else:                  return "BLUE",   COLOR_RANGES["BLUE"]
 
 # -----------------------------------------------
 # SENSOR SETUP (LiDAR)
@@ -33,11 +65,34 @@ def get_filtered_distance():
     return sum(history) / len(history)
 
 # -----------------------------------------------
-# MOTOR SETUP (Pico via Serial)
+# SHARED STATE
 # -----------------------------------------------
-print("Connecting to Pico...")
-pico = serial.Serial('/dev/ttyACM0', 115200, timeout=10)
+shared_lock = threading.Lock()
+shared = {
+    "error":     0.0,
+    "visible":   False,
+    "command":   "SEARCHING",
+    "tier":      "NONE",
+    "area":      0,
+    "state":     "STOPPED",
+    "dist":      0.0,
+    "left_pct":  0.0,
+    "right_pct": 0.0,
+    "color":     "BLUE",
+}
 
+# -----------------------------------------------
+# MOTOR SETUP (Pico via Serial) — auto-detect port
+# -----------------------------------------------
+def find_pico_port():
+    ports = sorted(glob.glob('/dev/ttyACM*'))
+    if not ports:
+        raise RuntimeError("No Pico found on any /dev/ttyACM* port")
+    print(f"ACM ports found: {ports} — using {ports[0]}")
+    return ports[0]
+
+print("Connecting to Pico...")
+pico = serial.Serial(find_pico_port(), 115200, timeout=10)
 print("Waiting for Pico to boot...")
 while True:
     line = pico.readline().decode('utf-8', errors='replace').strip()
@@ -47,18 +102,43 @@ while True:
     elif line:
         print(f"  Pico boot msg: {line}")
 
+# -----------------------------------------------
+# TUNING
+# -----------------------------------------------
+MAX_TURN        = 4.0
+BASE_THROTTLE   = 5.0
+SEARCH_TURN     = 4.0
+DRIVE_STOP_DIST = 200
+DRIVE_SLOW_DIST = 300
+DRIVE_SLOW_MULT = 0.4
+
+last_left  = None
+last_right = None
+
 def drive(throttle, turn):
-    left_speed  = max(-100.0, min(100.0, throttle + turn)) * -1  # mechanical flip
-    right_speed = max(-100.0, min(100.0, throttle - turn))
+    global last_left, last_right
+    left_speed  = max(-100.0, min(100.0, throttle + turn))
+    right_speed = max(-100.0, min(100.0, throttle - turn)) * -1
+
+    if (last_left is not None and
+        abs(left_speed  - last_left)  < 0.5 and
+        abs(right_speed - last_right) < 0.5):
+        return
+
     pico.write(f"DRIVE {left_speed} {right_speed}\n".encode('utf-8'))
     pico.flush()
+    last_left  = left_speed
+    last_right = right_speed
     with shared_lock:
         shared["left_pct"]  = left_speed
         shared["right_pct"] = right_speed
 
 def stop_motors():
+    global last_left, last_right
     pico.write(b"STOP\n")
     pico.flush()
+    last_left  = None
+    last_right = None
     with shared_lock:
         shared["left_pct"]  = 0.0
         shared["right_pct"] = 0.0
@@ -66,210 +146,111 @@ def stop_motors():
 # -----------------------------------------------
 # CAMERA + BALL TRACKING CONFIG
 # -----------------------------------------------
-FRAME_WIDTH  = 1280
-FRAME_HEIGHT = 720
-
-BLUE_LOW  = (100, 150,   0)
-BLUE_HIGH = (140, 255, 255)
-
-BALL_MIN_AREA = 300
-AR_MIN = 0.7
-AR_MAX = 4.5
-
-FAR_THRESH   = 3000
-MED_THRESH   = 20000
-CLOSE_THRESH = 40000
-
+FRAME_WIDTH    = 1280
+FRAME_HEIGHT   = 720
+BALL_MIN_AREA  = 300
+AR_MIN         = 0.7
+AR_MAX         = 4.5
+FAR_THRESH     =  3000
+MED_THRESH     = 20000
+CLOSE_THRESH   = 40000
 DEADZONE_FAR   = 0.10
 DEADZONE_MED   = 0.20
 DEADZONE_CLOSE = 0.35
 
 # -----------------------------------------------
-# TUNING
-# -----------------------------------------------
-MAX_TURN         = 10.0   # percent — gentle steering response
-BASE_THROTTLE    = 5.0    # percent forward speed while tracking
-SEARCH_TURN      = 10.0   # percent — spin speed when searching
-                           # flip sign to prefer spinning left
-STEER_BAR_PIXELS = 250
-
-# -----------------------------------------------
-# SHARED STATE
-# camera thread writes: error, visible, command, tier, area, debug_frame
-# main loop writes:     state, dist, left_pct, right_pct
-# ALL imshow calls happen only in the main loop
-# -----------------------------------------------
-shared_lock = threading.Lock()
-shared = {
-    "error":       0.0,
-    "visible":     False,
-    "command":     "SEARCHING",
-    "tier":        "NONE",
-    "area":        0,
-    "debug_frame": None,   # <-- camera thread puts the BGR frame here
-    "state":       "STOPPED",
-    "dist":        0.0,
-    "left_pct":    0.0,
-    "right_pct":   0.0,
-}
-
-# -----------------------------------------------
-# CAMERA THREAD  (no imshow here — only frame prep)
+# CAMERA THREAD
 # -----------------------------------------------
 def camera_thread():
     picam2 = Picamera2()
-    cfg    = picam2.create_preview_configuration(main={"size": (FRAME_WIDTH, FRAME_HEIGHT)})
+    cfg = picam2.create_preview_configuration(main={"size": (FRAME_WIDTH, FRAME_HEIGHT)})
     picam2.configure(cfg)
     picam2.start()
+    center_x   = FRAME_WIDTH // 2
+    last_color = None
 
-    center_x = FRAME_WIDTH // 2
+    try:
+        while True:
+            color_name, color_ranges = get_active_color()
+            if color_name != last_color:
+                print(f"Color changed -> {color_name}")
+                last_color = color_name
+            with shared_lock:
+                shared["color"] = color_name
 
-    while True:
-        frame = picam2.capture_array()
-        frame = cv2.rotate(frame, cv2.ROTATE_180)
+            frame = picam2.capture_array()
+            frame = cv2.rotate(frame, cv2.ROTATE_180)
+            bgr   = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            hsv   = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 
-        bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        hsv = cv2.cvtColor(bgr,   cv2.COLOR_BGR2HSV)
+            # OR together all ranges (handles red's hue wrap around 180->0)
+            mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+            for (low, high) in color_ranges:
+                mask = cv2.bitwise_or(mask, cv2.inRange(hsv, np.array(low), np.array(high)))
 
-        # --- Mask (contours only, never displayed) ---
-        mask   = cv2.inRange(hsv, np.array(BLUE_LOW), np.array(BLUE_HIGH))
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        mask   = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel)
-        mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            mask   = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel)
+            mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-        # --- Contours ---
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        best_contour = None
-        best_area    = 0
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            if area < BALL_MIN_AREA:
-                continue
-            x, y, w, h = cv2.boundingRect(cnt)
-            if not (AR_MIN <= w / float(h) <= AR_MAX):
-                continue
-            if area > best_area:
-                best_area    = area
-                best_contour = cnt
+            best_contour = None
+            best_area    = 0
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area < BALL_MIN_AREA:
+                    continue
+                x, y, w, h = cv2.boundingRect(cnt)
+                if not (AR_MIN <= w / float(h) <= AR_MAX):
+                    continue
+                if area > best_area:
+                    best_area    = area
+                    best_contour = cnt
 
-        # --- Error + debug frame ---
-        debug         = bgr.copy()
-        norm_error    = 0.0
-        ball_visible  = False
-        command       = "SEARCHING"
-        tier          = "NONE"
-        deadzone_frac = DEADZONE_MED
+            norm_error    = 0.0
+            ball_visible  = False
+            command       = "SEARCHING"
+            tier          = "NONE"
+            deadzone_frac = DEADZONE_MED
 
-        if best_contour is not None:
-            ball_visible = True
-            x, y, w, h  = cv2.boundingRect(best_contour)
-            obj_cx       = x + w // 2
+            if best_contour is not None:
+                ball_visible = True
+                x, y, w, h  = cv2.boundingRect(best_contour)
+                obj_cx       = x + w // 2
 
-            if   best_area < FAR_THRESH:   tier = "FAR";   deadzone_frac = DEADZONE_FAR
-            elif best_area < MED_THRESH:   tier = "MED";   deadzone_frac = DEADZONE_MED
-            elif best_area > CLOSE_THRESH: tier = "CLOSE"; deadzone_frac = DEADZONE_CLOSE
-            else:                          tier = "MED";   deadzone_frac = DEADZONE_MED
+                if best_area < FAR_THRESH:
+                    tier = "FAR";   deadzone_frac = DEADZONE_FAR
+                elif best_area < MED_THRESH:
+                    tier = "MED";   deadzone_frac = DEADZONE_MED
+                elif best_area > CLOSE_THRESH:
+                    tier = "CLOSE"; deadzone_frac = DEADZONE_CLOSE
+                else:
+                    tier = "MED";   deadzone_frac = DEADZONE_MED
 
-            deadzone_half = int(FRAME_WIDTH * deadzone_frac / 2)
-            left_bound    = center_x - deadzone_half
-            right_bound   = center_x + deadzone_half
+                deadzone_half = int(FRAME_WIDTH * deadzone_frac / 2)
+                left_bound    = center_x - deadzone_half
+                right_bound   = center_x + deadzone_half
 
-            norm_error = float(np.clip((obj_cx - center_x) / center_x, -1.0, 1.0))
+                norm_error = float(np.clip((obj_cx - center_x) / center_x, -1.0, 1.0))
 
-            if obj_cx < left_bound:
-                command = "LEFT"
-            elif obj_cx > right_bound:
-                command = "RIGHT"
-            else:
-                command    = "STRAIGHT"
-                norm_error = 0.0
+                if obj_cx < left_bound:
+                    command = "LEFT"
+                elif obj_cx > right_bound:
+                    command = "RIGHT"
+                else:
+                    command    = "STRAIGHT"
+                    norm_error = 0.0
 
-            cv2.rectangle(debug, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.circle(debug, (obj_cx, y + h // 2), 6, (0, 255, 255), -1)
+            with shared_lock:
+                shared["error"]   = norm_error
+                shared["visible"] = ball_visible
+                shared["command"] = command
+                shared["tier"]    = tier
+                shared["area"]    = int(best_area)
 
-        else:
-            deadzone_half = int(FRAME_WIDTH * deadzone_frac / 2)
-            left_bound    = center_x - deadzone_half
-            right_bound   = center_x + deadzone_half
-
-        # --- Zone overlay ---
-        overlay = debug.copy()
-        cv2.rectangle(overlay, (0, 0),           (left_bound,  FRAME_HEIGHT), (255,   0, 0), -1)
-        cv2.rectangle(overlay, (left_bound, 0),  (right_bound, FRAME_HEIGHT), (0,   255, 0), -1)
-        cv2.rectangle(overlay, (right_bound, 0), (FRAME_WIDTH, FRAME_HEIGHT), (0,     0, 255), -1)
-        debug = cv2.addWeighted(overlay, 0.15, debug, 0.85, 0)
-        cv2.line(debug, (left_bound,  0), (left_bound,  FRAME_HEIGHT), (255, 255, 255), 2)
-        cv2.line(debug, (right_bound, 0), (right_bound, FRAME_HEIGHT), (255, 255, 255), 2)
-
-        # --- Steering bar ---
-        bar_len = int(norm_error * STEER_BAR_PIXELS)
-        cv2.line(debug,
-                 (center_x, FRAME_HEIGHT - 40),
-                 (center_x + bar_len, FRAME_HEIGHT - 40),
-                 (0, 255, 255), 6)
-
-        # --- Text ---
-        cv2.putText(debug, f"Cmd: {command}",        (40,  60), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
-        cv2.putText(debug, f"Tier: {tier}",           (40, 110), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0,   255, 255), 2)
-        cv2.putText(debug, f"Area: {int(best_area)}", (40, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0,   255, 255), 2)
-        cv2.putText(debug, f"Err: {norm_error:+.2f}", (40, 190), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0,   255, 255), 2)
-
-        # --- Push everything to shared (including the finished frame) ---
-        with shared_lock:
-            shared["error"]       = norm_error
-            shared["visible"]     = ball_visible
-            shared["command"]     = command
-            shared["tier"]        = tier
-            shared["area"]        = int(best_area)
-            shared["debug_frame"] = debug   # main loop will imshow this
-
-    picam2.stop()
-
-# -----------------------------------------------
-# DASHBOARD DRAW HELPER
-# -----------------------------------------------
-STATE_COLORS = {
-    "DRIVING":   (0,   200,   0),
-    "SEARCHING": (0,   200, 255),
-    "STOPPED":   (0,     0, 200),
-}
-
-def draw_dashboard(snap):
-    W, H  = 500, 360
-    dash  = np.zeros((H, W, 3), dtype=np.uint8)
-    color = STATE_COLORS.get(snap["state"], (180, 180, 180))
-
-    # state banner
-    cv2.rectangle(dash, (0, 0), (W, 80), color, -1)
-    cv2.putText(dash, snap["state"], (20, 62),
-                cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 0, 0), 4)
-
-    # data rows
-    rows = [
-        ("Cam cmd",  snap["command"]),
-        ("Tier",     snap["tier"]),
-        ("Area",     str(snap["area"])),
-        ("Err",      f'{snap["error"]:+.3f}'),
-        ("LiDAR",    f'{snap["dist"]:.0f} mm'),
-        ("L motor",  f'{snap["left_pct"]:+.1f}%'),
-        ("R motor",  f'{snap["right_pct"]:+.1f}%'),
-    ]
-    for i, (label, value) in enumerate(rows):
-        y = 120 + i * 34
-        cv2.putText(dash, f"{label}:", (20,  y), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (160, 160, 160), 1)
-        cv2.putText(dash, value,       (200, y), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
-
-    # motor bar
-    bar_y = H - 30
-    mid   = W // 2
-    for pct, side in [(snap["left_pct"], -1), (snap["right_pct"], 1)]:
-        blen = min(int(abs(pct) / 100.0 * (W // 2 - 20)), W // 2 - 20)
-        bcol = (0, 220, 0) if pct > 0 else (0, 0, 220) if pct < 0 else (80, 80, 80)
-        cv2.line(dash, (mid, bar_y), (mid + side * blen, bar_y), bcol, 12)
-    cv2.line(dash, (mid, bar_y - 10), (mid, bar_y + 10), (200, 200, 200), 2)
-
-    cv2.imshow("Robot Status", dash)
+            time.sleep(0.01)
+    finally:
+        picam2.stop()
 
 # -----------------------------------------------
 # INITIALISE LIDAR
@@ -287,68 +268,59 @@ cam_thread = threading.Thread(target=camera_thread, daemon=True)
 cam_thread.start()
 print("Camera thread started.\n")
 
-# Create both windows in the MAIN thread before the loop
-cv2.namedWindow("Steering Debug", cv2.WINDOW_NORMAL)
-cv2.namedWindow("Robot Status",   cv2.WINDOW_NORMAL)
-
 # -----------------------------------------------
-# MAIN LOOP  — all imshow calls live here
+# MAIN LOOP
 # -----------------------------------------------
 current_state = "STOPPED"
-
 try:
-    print("--- Ball Tracking + Flinch Reflex Active ---")
+    print("--- Ball Tracking Active (headless) ---")
     while True:
         dist = get_filtered_distance()
 
         with shared_lock:
             norm_error   = shared["error"]
             ball_visible = shared["visible"]
-            debug_frame  = shared["debug_frame"]
 
-        # ---- BALL VISIBLE ----
         if ball_visible:
             if current_state != "DRIVING":
                 print("Ball acquired — tracking.")
             turn = norm_error * MAX_TURN
-            drive(throttle=BASE_THROTTLE, turn=turn)
-            current_state = "DRIVING"
 
-        # ---- BALL LOST ----
+            if dist is not None and dist <= DRIVE_STOP_DIST:
+                print(f"Too close! ({dist:.0f} mm) — stopping.")
+                stop_motors()
+                current_state = "STOPPED"
+            elif dist is not None and dist <= DRIVE_SLOW_DIST:
+                drive(throttle=BASE_THROTTLE * DRIVE_SLOW_MULT, turn=turn)
+                current_state = "DRIVING"
+            else:
+                drive(throttle=BASE_THROTTLE, turn=turn)
+                current_state = "DRIVING"
+
         else:
             if current_state == "DRIVING":
                 print("Ball lost — stopping.")
                 stop_motors()
                 current_state = "STOPPED"
-
             elif current_state in ("STOPPED", "SEARCHING"):
                 if dist is not None and dist <= 200:
                     if current_state != "STOPPED":
-                        print(f"Obstacle! ({dist:.1f} mm) — BRAKING.")
-                        stop_motors()
-                        current_state = "STOPPED"
+                        print(f"Obstacle! ({dist:.1f} mm) — braking.")
+                    stop_motors()
+                    current_state = "STOPPED"
                 else:
                     if current_state != "SEARCHING":
                         print("Spinning to search...")
                     drive(throttle=0, turn=SEARCH_TURN)
                     current_state = "SEARCHING"
 
-        # ---- Draw both windows from main thread ----
         with shared_lock:
             shared["state"] = current_state
             shared["dist"]  = dist if dist is not None else 0.0
-            snap = dict(shared)
 
-        if debug_frame is not None:
-            cv2.imshow("Steering Debug", debug_frame)
-
-        draw_dashboard(snap)
-        cv2.waitKey(1)   # single pump for all windows
-
-        time.sleep(0.05)
+        time.sleep(0.01)
 
 except KeyboardInterrupt:
     print("\nInterrupted. Stopping robot.")
     stop_motors()
     pico.close()
-    cv2.destroyAllWindows()
