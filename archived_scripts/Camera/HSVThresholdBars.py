@@ -1,3 +1,4 @@
+# Incredibly helpful script for determining HSV values for the different colored balls and buckets. It lets you change the parameters in real time.
 import cv2
 import numpy as np
 from picamera2 import Picamera2
