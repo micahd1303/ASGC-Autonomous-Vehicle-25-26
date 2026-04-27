@@ -1,3 +1,7 @@
+# This is the competition script run on the pi 5, it takes in inputs from the pi camera and distance sensor and follows the ball set by the switches.
+# It works well, but has not been optimized for speed/efficiency.
+# Commands to the motors are sent via serial usb connection to the pico where the motors are actually driven.
+# All the lidar sensor does is stop when an object is within the threshold (theoretically when the claw would have been initiated)
 import sys
 import time
 import serial
@@ -109,7 +113,7 @@ MAX_TURN        = 4.0
 BASE_THROTTLE   = 6.5
 SEARCH_TURN     = 4.0
 DRIVE_STOP_DIST = 300
-DRIVE_SLOW_DIST = 400
+DRIVE_SLOW_DIST = 350
 DRIVE_SLOW_MULT = 0.6
 
 last_left  = None
